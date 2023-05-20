@@ -17,11 +17,11 @@ class Preprocessing:
 
             self.test_skeletonize(thresh)
             watershed, markers = self.test_watershed(thresh, img)
-            contours = self.test_contours(thresh)
+            contours, sum_contours = self.test_contours(thresh)
             #self.incision.append(self.find_incision(img_proc))
             self.visualize(watershed)
             self.visualize(contours)
-            #self.visualize(markers)
+            self.visualize(self.test_contours(markers))
 
             # visualization using the markers from watershedding to draw contours (kinda good!)
             self.visualize(self.test_contours(markers))
@@ -45,6 +45,7 @@ class Preprocessing:
         # dilate to get rid of unnecessary gaps
         kernel = np.ones((3, 3), np.uint8)
         skel_close = cv2.morphologyEx(skel, cv2.MORPH_CLOSE, kernel)
+        #skel_dil = cv2.dilate(skel_close, kernel, iterations=1)
 
         # use hough transform to get all lines
         lines = cv2.HoughLinesP(image=skel_close,rho=1,theta=np.pi/180, threshold=10,lines=np.array([]), minLineLength=minLineLength,maxLineGap=10)
@@ -62,8 +63,6 @@ class Preprocessing:
                 cv2.line(img_new, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (255, 0, 0), 1, cv2.LINE_AA)
 
         plt.imshow(img_new)
-        plt.imshow(edge_hor)
-        plt.imshow(edge_ver)
         return
 
 
@@ -109,7 +108,7 @@ class Preprocessing:
         filtered_contours = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area > 0 and area < 100000000:
+            if area > 0 and area > 10:
                 filtered_contours.append(contour)
 
         inverse_new = cv2.merge([inverse,inverse, inverse])
@@ -117,7 +116,7 @@ class Preprocessing:
             x, y, w, h = cv2.boundingRect(contour)
             cv2.rectangle(inverse_new, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-        return inverse_new
+        return inverse_new, len(filtered_contours)
 
     def thresholding_plus(self, img):
         # test
