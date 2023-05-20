@@ -17,14 +17,14 @@ class Preprocessing:
 
             self.test_skeletonize(thresh)
             watershed, markers = self.test_watershed(thresh, img)
-            contours, sum_contours = self.test_contours(thresh)
+            contours = self.test_contours(thresh)
             #self.incision.append(self.find_incision(img_proc))
             self.visualize(watershed)
             self.visualize(contours)
             self.visualize(self.test_contours(markers))
 
             # visualization using the markers from watershedding to draw contours (kinda good!)
-            self.visualize(self.test_contours(markers))
+            #self.visualize(self.test_contours(markers))
 
     def test_sobel_hor_ver(self, img):
         edge_hor = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
@@ -116,7 +116,7 @@ class Preprocessing:
             x, y, w, h = cv2.boundingRect(contour)
             cv2.rectangle(inverse_new, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-        return inverse_new, len(filtered_contours)
+        return inverse_new
 
     def thresholding_plus(self, img):
         # test

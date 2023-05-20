@@ -7,7 +7,7 @@ import analysis
 
 
 # Import annotations from xml file and parse it to dictionary
-with open('ZDO_Team21_Morslaoui_Auer/annotations.xml') as fd:
+with open('annotations.xml') as fd:
     doc = xmltodict.parse(fd.read())
 
 
