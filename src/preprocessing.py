@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import skimage
 import cv2
 import numpy as np
+import math
 
 
 class Preprocessing:
@@ -13,6 +14,8 @@ class Preprocessing:
         for img in self.imgs:
             img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             thresh = self.thresholding_plus(img_gray)
+
+            self.test_skeletonize(thresh)
             watershed, markers = self.test_watershed(thresh, img)
             contours = self.test_contours(thresh)
             #self.incision.append(self.find_incision(img_proc))
@@ -22,6 +25,46 @@ class Preprocessing:
 
             # visualization using the markers from watershedding to draw contours (kinda good!)
             self.visualize(self.test_contours(markers))
+
+    def test_sobel_hor_ver(self, img):
+        edge_hor = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
+        edge_hor_thresh = edge_hor > 0
+        edge_ver = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
+        edge_ver_thresh = edge_ver > 0
+
+
+    # If the image shows a fully stitched incision, using other grouping methods isnt viable
+    # Extracting horizontal and vertical edges, the incision can be seperated from the stitches, and grouped by analyzing the angle
+    def test_skeletonize(self, img):
+
+        # skeletonize preprocessed image
+        skel = skimage.morphology.medial_axis(img)
+        minLineLength=15
+        skel = skel.astype(np.uint8)
+
+        # dilate to get rid of unnecessary gaps
+        kernel = np.ones((3, 3), np.uint8)
+        skel_close = cv2.morphologyEx(skel, cv2.MORPH_CLOSE, kernel)
+
+        # use hough transform to get all lines
+        lines = cv2.HoughLinesP(image=skel_close,rho=1,theta=np.pi/180, threshold=10,lines=np.array([]), minLineLength=minLineLength,maxLineGap=10)
+
+        # write detected lines to image
+        a,b,c = lines.shape
+        img_new = cv2.merge([img, img, img])
+        for i in range(a):
+            x1, y1, x2, y2 = lines[i][0]
+            slope = (y2 - y1) / (x2 - x1)
+            angle = np.math.atan(slope) * 180. / np.pi
+            if -10 < angle < 10:
+                cv2.line(img_new, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (0, 0, 255), 1, cv2.LINE_AA)
+            if 70 < abs(angle) < 110:
+                cv2.line(img_new, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (255, 0, 0), 1, cv2.LINE_AA)
+
+        plt.imshow(img_new)
+        plt.imshow(edge_hor)
+        plt.imshow(edge_ver)
+        return
 
 
     # This seems to seperate the areas quite well, not sure if it's useful yet though. Might be worth looking into more
