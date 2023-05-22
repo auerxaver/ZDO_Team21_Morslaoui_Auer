@@ -15,16 +15,27 @@ class Preprocessing:
             img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             thresh = self.thresholding_plus(img_gray)
 
-            self.test_skeletonize(thresh)
+            #skel = self.test_skel_hough(thresh)
             watershed, markers = self.test_watershed(thresh, img)
             contours = self.test_contours(thresh)
-            #self.incision.append(self.find_incision(img_proc))
+            
+            # the following can be used to transform image with unconnected stitches to connected stitches
+            # The hough transformation isnt that stable though, hard to find out why (probably has to do with the combination of parameters)
+            # when stitches arent perpendicular, 
+            kernel = np.ones((5,5),np.uint8)
+            dil = cv2.dilate(markers, kernel, iterations=6)
+            erode = cv2.erode(dil, kernel, iterations=6)
+            hough_erode = self.test_skel_hough(erode)
+
+            self.visualize(hough_erode)
+            self.visualize(thresh)
+            self.visualize(skel)
             self.visualize(watershed)
             self.visualize(contours)
+            self.visualize(markers)
             self.visualize(self.test_contours(markers))
 
-            # visualization using the markers from watershedding to draw contours (kinda good!)
-            #self.visualize(self.test_contours(markers))
+
 
     def test_sobel_hor_ver(self, img):
         edge_hor = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
@@ -35,35 +46,39 @@ class Preprocessing:
 
     # If the image shows a fully stitched incision, using other grouping methods isnt viable
     # Extracting horizontal and vertical edges, the incision can be seperated from the stitches, and grouped by analyzing the angle
-    def test_skeletonize(self, img):
+    def test_skel_hough(self, img):
 
         # skeletonize preprocessed image
-        skel = skimage.morphology.medial_axis(img)
-        minLineLength=15
+        skel = skimage.morphology.skeletonize(img)
         skel = skel.astype(np.uint8)
 
-        # dilate to get rid of unnecessary gaps
+        # closing to get rid of unnecessary gaps
         kernel = np.ones((3, 3), np.uint8)
         skel_close = cv2.morphologyEx(skel, cv2.MORPH_CLOSE, kernel)
-        #skel_dil = cv2.dilate(skel_close, kernel, iterations=1)
+        plt.imshow(skel_close)
 
         # use hough transform to get all lines
-        lines = cv2.HoughLinesP(image=skel_close,rho=1,theta=np.pi/180, threshold=10,lines=np.array([]), minLineLength=minLineLength,maxLineGap=10)
+        minLineLength=20
+        maxLineGap = 30
+        lines = cv2.HoughLinesP(image=skel_close, rho=1, theta=np.pi/20, threshold=10, lines=np.array([]), minLineLength=minLineLength, maxLineGap=maxLineGap)
 
         # write detected lines to image
         a,b,c = lines.shape
         img_new = cv2.merge([img, img, img])
+        skel_new = cv2.merge([255*skel,255*skel,255*skel])
         for i in range(a):
             x1, y1, x2, y2 = lines[i][0]
-            slope = (y2 - y1) / (x2 - x1)
+            if x1 == x2:
+                slope = 90
+            else:
+                slope = (y2 - y1) / (x2 - x1)
             angle = np.math.atan(slope) * 180. / np.pi
             if -10 < angle < 10:
-                cv2.line(img_new, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (0, 0, 255), 1, cv2.LINE_AA)
+                cv2.line(skel_new, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (0, 0, 255), 1, cv2.LINE_AA)
             if 70 < abs(angle) < 110:
-                cv2.line(img_new, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (255, 0, 0), 1, cv2.LINE_AA)
+                cv2.line(skel_new, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (255, 0, 0), 1, cv2.LINE_AA)
 
-        plt.imshow(img_new)
-        return
+        return skel_new
 
 
     # This seems to seperate the areas quite well, not sure if it's useful yet though. Might be worth looking into more
@@ -118,26 +133,31 @@ class Preprocessing:
 
         return inverse_new
 
+
+    # This function has to be improved a lot to also detect images with low contrast etc.
     def thresholding_plus(self, img):
-        # test
         # Apply Gaussian blur for noise reduction
         blurred = cv2.GaussianBlur(img, (5, 5), 0)
 
         # Use adaptive thresholding to filter for incisions and stitches
-        thresholding = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 35, 18)
+        thresholding = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 35, 18) # 35, 18
 
         # Reverse black/white values
-        inverse = np.invert(thresholding)       
+        inverse = np.invert(thresholding)
+
         return inverse
 
-    # function for extracting horizontal lines from image - not useful yet
-    def horizontal_edges(self, img):
-        edge_hor = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
-        _, edge_hor = cv2.threshold(edge_hor, 50, 255, cv2.THRESH_BINARY)
-        plt.imshow(edge_hor, cmap="gray")
 
-        return edge_hor
 
+    def visualize(self, img):
+        #x = [self.incision[0][0][0], self.incision[0][1][0]]
+        #y = [self.incision[0][0][1], self.incision[0][1][1]]
+        #plt.plot(x, y, 'r')
+        plt.imshow(img)
+        plt.show()
+
+
+    '''
     def find_incision(self, img):
         height, width = img.shape[0], img.shape[1]
         leftmost_black = [None,None]
@@ -152,17 +172,4 @@ class Preprocessing:
                     if rightmost_black[0] is None or x > rightmost_black[0]:
                         rightmost_black = [x, y]
         return [leftmost_black, rightmost_black]
-
-    def find_stitches(self, img):
-        stitches = [] 
-        return stitches
-
-
-
-
-    def visualize(self, img):
-        #x = [self.incision[0][0][0], self.incision[0][1][0]]
-        #y = [self.incision[0][0][1], self.incision[0][1][1]]
-        #plt.plot(x, y, 'r')
-        plt.imshow(img)
-        plt.show()
+    '''
