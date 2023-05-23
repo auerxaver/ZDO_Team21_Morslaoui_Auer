@@ -2,7 +2,6 @@ import xmltodict
 import sys
 
 import preprocessing
-import analysis
 
 
 
@@ -20,6 +19,6 @@ if __name__ == '__main__':
         inc = sys.argv[-1]
     print(sys.argv)
 
-    pp = preprocessing.Preprocessing(incisions) # Generate output.json in preprocessing script
+    pp = preprocessing.Preprocessing(incisions, output_filename) # Generate output.json in preprocessing script
 
     x = 0

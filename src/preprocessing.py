@@ -6,36 +6,131 @@ import math
 
 
 class Preprocessing:
-    def __init__(self, im_paths):
+    def __init__(self, im_paths, output_filename):
         self.im_paths = im_paths
+        self.filenames = [path.split("/")[-1] for path in im_paths]
+        self.output_filename = output_filename
         self.imgs = [cv2.imread(im_path) for im_path in im_paths]
-        self.incision = []
+        self.incisions = []
         self.stitches = []
+        self.contours_list = []
         for img in self.imgs:
             img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             thresh = self.thresholding_plus(img_gray)
 
-            #skel = self.test_skel_hough(thresh)
+            skel = self.test_skel_hough(thresh)
             watershed, markers = self.test_watershed(thresh, img)
-            contours = self.test_contours(thresh)
+            contours, areas = self.test_contours(thresh)
+            self.contours_list.append(areas)
             
             # the following can be used to transform image with unconnected stitches to connected stitches
             # The hough transformation isnt that stable though, hard to find out why (probably has to do with the combination of parameters)
-            # when stitches arent perpendicular, 
+            # when stitches arent perpendicular, it struggles to find the correct hough lines.
             kernel = np.ones((5,5),np.uint8)
             dil = cv2.dilate(markers, kernel, iterations=6)
             erode = cv2.erode(dil, kernel, iterations=6)
             hough_erode = self.test_skel_hough(erode)
-
+            self.hit_miss = self.test_hit_miss(erode)
+            '''
             self.visualize(hough_erode)
             self.visualize(thresh)
             self.visualize(skel)
             self.visualize(watershed)
             self.visualize(contours)
             self.visualize(markers)
-            self.visualize(self.test_contours(markers))
+            contours_markers, areas_markers = self.test_contours(markers)
+            self.visualize(contours_markers)
+            '''
+            self.draw_hit_miss(self.hit_miss, thresh)
+        
+        #self.find_incisions()
 
 
+    def draw_hit_miss(self, meta, img):
+        # draw incision
+        img_color = cv2.merge([img, img, img])
+        cv2.line(img_color, meta['inc_left'][0], meta['inc_right'][0], (255,0,0), 2)
+
+        # draw stitches
+        for i in range(len(meta['top'])):
+            cv2.line(img_color, meta['top'][i], meta['bottom'][i], (255,0,0), 2)
+        plt.imshow(img_color)
+        plt.show()
+        return
+
+    def find_incisions(self):
+        self.incisions = []
+        for contours in self.contours_list:
+            areas = [cv2.contourArea(contour) for contour in contours]
+            incision_idx = areas.index(max(areas))
+            self.incisions.append(contours[incision_idx])
+        return
+
+    def write_to_json(self):
+        output_json = {}
+        for filename in self.filenames:
+            return
+
+    # actually pretty good, outliers must be removed from skeletonized image though.
+    def test_hit_miss(self, img):
+        im_shape = img.shape
+        height = im_shape[0]
+        width = im_shape[1]
+
+        # skeletonize preprocessed image
+        skel = skimage.morphology.skeletonize(img)
+        skel = skel.astype(np.uint8)
+
+        # closing to get rid of unnecessary gaps
+        kernel = np.ones((3, 3), np.uint8)
+        skel_close = cv2.morphologyEx(skel, cv2.MORPH_CLOSE, kernel)
+
+        # create structuring elements for top/bottom stitches and incision
+        top_kernel = np.zeros((3, 3), np.uint8)
+        top_kernel[2][1] = 1
+
+        bottom_kernel = np.zeros((3, 3), np.uint8)
+        bottom_kernel[0][1] = 1
+
+        incision_left_kernel = np.zeros((3, 3), np.uint8)
+        incision_left_kernel[1][0] = 1
+        incision_left_kernel[1][1] = 1
+
+        incision_right_kernel = np.zeros((3, 3), np.uint8)
+        incision_right_kernel[1][2] = 1
+        incision_right_kernel[1][1] = 1
+        
+
+
+        # Use hit or miss strategy to find the ends of the stitches and incisions and save them in dictionary
+        meta = {
+            'top': [],
+            'bottom': [],
+            'inc_left': [],
+            'inc_right': []
+        }
+        for y in range(1, height - 2):
+            for x in range(1, width - 2):
+                current_square = skel_close[y-1:y+2, x-1:x+2]
+                if np.equal(current_square, top_kernel).all():
+                    meta['top'].append([x,y])
+                elif np.equal(current_square, bottom_kernel).all():
+                    meta['bottom'].append([x,y])
+                elif np.equal(current_square, incision_left_kernel).all():
+                    meta['inc_left'].append([x,y])
+                elif np.equal(current_square, incision_right_kernel).all():
+                    meta['inc_right'].append([x,y])
+
+        # maybe add function to filter out unrealistic incision parts here
+
+        # sort stitches by x value
+        meta['top'].sort()
+        meta['bottom'].sort()
+
+        plt.imshow(skel_close)
+        plt.show()
+
+        return meta
 
     def test_sobel_hor_ver(self, img):
         edge_hor = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
@@ -82,7 +177,8 @@ class Preprocessing:
 
 
     # This seems to seperate the areas quite well, not sure if it's useful yet though. Might be worth looking into more
-    def test_watershed(self, inverse, img_color):
+    def test_watershed(self, inverse, img):
+        img_color = img.copy()
         # noise removal
         kernel = np.ones((3,3),np.uint8)
         opening = cv2.morphologyEx(inverse,cv2.MORPH_OPEN,kernel, iterations = 2)
@@ -131,7 +227,7 @@ class Preprocessing:
             x, y, w, h = cv2.boundingRect(contour)
             cv2.rectangle(inverse_new, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-        return inverse_new
+        return inverse_new, filtered_contours
 
 
     # This function has to be improved a lot to also detect images with low contrast etc.
