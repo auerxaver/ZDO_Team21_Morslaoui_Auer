@@ -3,73 +3,101 @@ import skimage
 import cv2
 import numpy as np
 import math
+import itertools
 
 
 class Preprocessing:
-    def __init__(self, im_paths, output_filename):
+    def __init__(self, im_paths, output_filename, enable_visualization):
         self.im_paths = im_paths
-        self.filenames = [path.split("/")[-1] for path in im_paths]
         self.output_filename = output_filename
+        self.filenames = [path.split("/")[-1] for path in im_paths]
         self.imgs = [cv2.imread(im_path) for im_path in im_paths]
+
         self.incisions = []
         self.stitches = []
         self.contours_list = []
+        self.meta = {
+            'top': [],
+            'bottom': [],
+            'inc_left': [],
+            'inc_right': []
+        }
+
         for img in self.imgs:
             img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             thresh = self.thresholding_plus(img_gray)
 
-            skel = self.test_skel_hough(thresh)
+
+            # run watershedding algorithm (mostly for visualization right now, markers can be used for further analysis though)
             watershed, markers = self.test_watershed(thresh, img)
-            contours, areas = self.test_contours(thresh)
-            self.contours_list.append(areas)
+
+            # run contour algorithm, creating a visualization and saving the contours in a list
+            #contours = self.test_contours(thresh)
             
             # the following can be used to transform image with unconnected stitches to connected stitches
-            # The hough transformation isnt that stable though, hard to find out why (probably has to do with the combination of parameters)
-            # when stitches arent perpendicular, it struggles to find the correct hough lines.
+            # This allows us to use different kinds of analyses on the image
             kernel = np.ones((5,5),np.uint8)
-            dil = cv2.dilate(markers, kernel, iterations=6)
+            dil = cv2.dilate(thresh, kernel, iterations=6)
             erode = cv2.erode(dil, kernel, iterations=6)
-            hough_erode = self.test_skel_hough(erode)
+
+
+            # The hough transformation isnt that stable yet, hard to find out why (probably has to do with the combination of parameters)
+            # when stitches arent perpendicular, it struggles to find the correct hough lines.
+            skel_normal = self.test_skel_hough(thresh) # run hough transform with thresholded image
+            hough_erode = self.test_skel_hough(erode) # run hough transform with dilated/eroded image
+
+            # Basic hit or miss implementation, with a few more tweaks, this could be really useful
             self.hit_miss = self.test_hit_miss(erode)
-            '''
-            self.visualize(hough_erode)
-            self.visualize(thresh)
-            self.visualize(skel)
-            self.visualize(watershed)
-            self.visualize(contours)
-            self.visualize(markers)
-            contours_markers, areas_markers = self.test_contours(markers)
-            self.visualize(contours_markers)
-            '''
+            contours_markers = self.test_contours(markers)
+            
+            if enable_visualization:
+                self.visualize(thresh)
+                self.visualize(skel_normal)
+                self.visualize(hough_erode)
+                self.visualize(watershed)
+                self.visualize(markers)
+                #self.visualize(contours)
+                self.visualize(contours_markers)
+            
             self.draw_hit_miss(self.hit_miss, thresh)
         
         #self.find_incisions()
 
 
+    # This function has to be improved a lot to also detect images with low contrast etc.
+    def thresholding_plus(self, img):
+        # Apply Gaussian blur for noise reduction
+        blurred = cv2.GaussianBlur(img, (5, 5), 0)
+
+        # Use adaptive thresholding to filter for incisions and stitches
+        thresholding = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 35, 18) # 35, 18
+
+        # Reverse black/white values
+        inverse = np.invert(thresholding)
+
+
+        return inverse
+
+
     def draw_hit_miss(self, meta, img):
         # draw incision
         img_color = cv2.merge([img, img, img])
-        cv2.line(img_color, meta['inc_left'][0], meta['inc_right'][0], (255,0,0), 2)
+        cv2.line(img_color, self.meta['inc_left'], self.meta['inc_right'], (255,0,0), 2)
 
         # draw stitches
-        for i in range(len(meta['top'])):
-            cv2.line(img_color, meta['top'][i], meta['bottom'][i], (255,0,0), 2)
+        for i in range(len(self.meta['top'])):
+            cv2.line(img_color, self.meta['top'][i], self.meta['bottom'][i], (255,0,0), 2)
         plt.imshow(img_color)
         plt.show()
         return
 
-    def find_incisions(self):
+    def find_incisions_from_contour(self):
         self.incisions = []
         for contours in self.contours_list:
             areas = [cv2.contourArea(contour) for contour in contours]
             incision_idx = areas.index(max(areas))
             self.incisions.append(contours[incision_idx])
         return
-
-    def write_to_json(self):
-        output_json = {}
-        for filename in self.filenames:
-            return
 
     # actually pretty good, outliers must be removed from skeletonized image though.
     def test_hit_miss(self, img):
@@ -86,51 +114,105 @@ class Preprocessing:
         skel_close = cv2.morphologyEx(skel, cv2.MORPH_CLOSE, kernel)
 
         # create structuring elements for top/bottom stitches and incision
+        # These may have to be adjusted, so it finds the stitches more reliably
         top_kernel = np.zeros((3, 3), np.uint8)
         top_kernel[2][1] = 1
 
         bottom_kernel = np.zeros((3, 3), np.uint8)
         bottom_kernel[0][1] = 1
 
-        incision_left_kernel = np.zeros((3, 3), np.uint8)
-        incision_left_kernel[1][0] = 1
-        incision_left_kernel[1][1] = 1
-
         incision_right_kernel = np.zeros((3, 3), np.uint8)
-        incision_right_kernel[1][2] = 1
-        incision_right_kernel[1][1] = 1
-        
+        incision_right_kernel[1][0] = 1
+        #incision_right_kernel[1][1] = 1
 
-
+        incision_left_kernel = np.zeros((3, 3), np.uint8)
+        incision_left_kernel[1][2] = 1
+        #incision_left_kernel[1][1] = 1
+    
         # Use hit or miss strategy to find the ends of the stitches and incisions and save them in dictionary
-        meta = {
-            'top': [],
-            'bottom': [],
-            'inc_left': [],
-            'inc_right': []
-        }
         for y in range(1, height - 2):
             for x in range(1, width - 2):
                 current_square = skel_close[y-1:y+2, x-1:x+2]
                 if np.equal(current_square, top_kernel).all():
-                    meta['top'].append([x,y])
+                    self.meta['top'].append([x,y])
                 elif np.equal(current_square, bottom_kernel).all():
-                    meta['bottom'].append([x,y])
+                    self.meta['bottom'].append([x,y])
                 elif np.equal(current_square, incision_left_kernel).all():
-                    meta['inc_left'].append([x,y])
+                    self.meta['inc_left'].append([x,y])
                 elif np.equal(current_square, incision_right_kernel).all():
-                    meta['inc_right'].append([x,y])
+                    self.meta['inc_right'].append([x,y])
 
-        # maybe add function to filter out unrealistic incision parts here
+        self.sort_and_filter_meta()
+
+
+    def sort_and_filter_meta(self):
+        # filter out unrealistic incision parts 
+        self.meta['inc_left'].sort()
+        self.meta['inc_right'].sort()
+
+        self.meta['inc_left'] = self.meta['inc_left'][0]
+        self.meta['inc_right'] = self.meta['inc_right'][-1]
 
         # sort stitches by x value
-        meta['top'].sort()
-        meta['bottom'].sort()
+        self.meta['top'].sort()
+        self.meta['bottom'].sort()
 
-        plt.imshow(skel_close)
-        plt.show()
+        # filter out top and bottom stitches that dont have a corresponding entry in each other's lists
+        # some information gets lost by that, but necessary for further analysis
+        top = self.meta['top']
+        bottom = self.meta['bottom']
+        if len(top) > len(bottom):
+            idxs_to_remove = self.filter_stitches_old(bottom, top, np.abs(len(top) - len(bottom)))
+            #for idx in idxs_to_remove:
+            top = [v for i, v in enumerate(top) if i not in idxs_to_remove]
+            self.meta['top'] = top
+        elif len(top) < len(bottom):
+            idxs_to_remove = self.filter_stitches_old(top, bottom, np.abs(len(top) - len(bottom)))
+            #for idx in idxs_to_remove:
+                #del bottom[idx]
+            bottom = [v for i, v in enumerate(bottom) if i not in idxs_to_remove]
+            self.meta['bottom'] = bottom
 
-        return meta
+        self.sort_stitches(top, bottom)
+        test = 0
+
+
+    def sort_stitches(self, top, bottom):
+        sorted_bottom = []
+        for i in range(len(top)):
+            shortest_distance = float('inf')
+            shortest_idx = 0
+            for j in range(len(bottom)):
+                dst = self.calculate_distance(top[i], bottom[j])
+                if dst < shortest_distance:
+                    shortest_distance = dst
+                    shortest_idx = j
+            if bottom[shortest_idx] not in sorted_bottom:
+                sorted_bottom.append(bottom[shortest_idx])
+            else:
+
+                idx_to_replace = sorted_bottom.index(bottom[shortest_idx])
+                if self.calculate_distance(self.meta['top'][idx_to_replace], sorted_bottom[idx_to_replace]) < shortest_distance:
+                    sorted_bottom[idx_to_replace] = bottom[shortest_idx]
+                    
+        self.meta['bottom'] = sorted_bottom
+        return
+
+
+    def calculate_distance(self, x1, x2):
+        return abs(x1[0] - x2[0])
+
+
+    def filter_stitches_old(self, shorter_list, longer_list, size_difference):
+        distances = []
+        shorter_list = np.asarray(shorter_list)
+        for stitch in longer_list:
+            distances.append(min(np.abs(shorter_list[:,0] - stitch[0])))
+
+        distances = np.asarray(distances)
+        idxs_to_remove = np.argpartition(distances, -size_difference)[-size_difference:]
+
+        return idxs_to_remove
 
     def test_sobel_hor_ver(self, img):
         edge_hor = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
@@ -222,28 +304,22 @@ class Preprocessing:
             if area > 0 and area > 10:
                 filtered_contours.append(contour)
 
+        self.contours_list.append(filtered_contours)
         inverse_new = cv2.merge([inverse,inverse, inverse])
         for contour in filtered_contours:
             x, y, w, h = cv2.boundingRect(contour)
             cv2.rectangle(inverse_new, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-        return inverse_new, filtered_contours
 
 
-    # This function has to be improved a lot to also detect images with low contrast etc.
-    def thresholding_plus(self, img):
-        # Apply Gaussian blur for noise reduction
-        blurred = cv2.GaussianBlur(img, (5, 5), 0)
-
-        # Use adaptive thresholding to filter for incisions and stitches
-        thresholding = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 35, 18) # 35, 18
-
-        # Reverse black/white values
-        inverse = np.invert(thresholding)
-
-        return inverse
+        return inverse_new
 
 
+
+    def write_to_json(self):
+        output_json = {}
+        for filename in self.filenames:
+            return
 
     def visualize(self, img):
         #x = [self.incision[0][0][0], self.incision[0][1][0]]
@@ -252,20 +328,3 @@ class Preprocessing:
         plt.imshow(img)
         plt.show()
 
-
-    '''
-    def find_incision(self, img):
-        height, width = img.shape[0], img.shape[1]
-        leftmost_black = [None,None]
-        rightmost_black = [None,None]
-        for x in range(width - 1):
-            for y in range(height - 1):
-                # Check if the pixel is black (0)
-                if img[y, x] == 255:
-                    # Update leftmost and rightmost positions
-                    if leftmost_black[0] is None or x < leftmost_black[0]:
-                        leftmost_black = [x, y]
-                    if rightmost_black[0] is None or x > rightmost_black[0]:
-                        rightmost_black = [x, y]
-        return [leftmost_black, rightmost_black]
-    '''
