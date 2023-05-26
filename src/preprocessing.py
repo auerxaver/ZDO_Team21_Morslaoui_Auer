@@ -1,10 +1,12 @@
 import matplotlib.pyplot as plt
+from pathlib import PurePath
 import numpy as np
 import itertools
 import skimage
 import json
 import math
 import cv2
+import os
 
 import util
 
@@ -28,9 +30,10 @@ def add_border(im):
 
 class Preprocessing:
     def __init__(self, im_paths, output_filename, enable_visualization):
+        self.dir_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.im_paths = im_paths
         self.output_filename = output_filename
-        self.filenames = [path.split("/")[-1] for path in im_paths]
+        self.filenames = [PurePath(path).parts[-1] for path in im_paths]
         self.imgs = [cv2.imread(im_path) for im_path in im_paths]
 
         self.contours_list = []
@@ -73,15 +76,14 @@ class Preprocessing:
             self.hit_miss = self.test_hit_miss(erode, idx)
             
             if enable_visualization:
-                self.visualize(thresh)
-                self.visualize(skel_normal)
-                self.visualize(hough_erode)
-                self.visualize(watershed)
-                self.visualize(markers)
-                #self.visualize(contours)
-                self.visualize(contours_markers)
-            self.draw_hit_miss(self.hit_miss, thresh, idx)
-            test = 0
+                self.visualize(thresh, self.filenames[idx], "thresholded")
+                self.visualize(skel_normal, self.filenames[idx], "hough_transform_normal")
+                self.visualize(hough_erode, self.filenames[idx], "hough_transform_eroded")
+                self.visualize(watershed, self.filenames[idx], "watershedding")
+                self.visualize(markers, self.filenames[idx], "watershedding_markers")
+                self.visualize(contours, self.filenames[idx], "contours")
+                self.visualize(contours_markers, self.filenames[idx], "contours_markers")
+                self.visualize_hit_miss(thresh, idx, self.filenames[idx], "hit_or_miss")
         
         self.write_to_json()
         
@@ -105,19 +107,6 @@ class Preprocessing:
 
 
         return inverse_border
-
-
-    def draw_hit_miss(self, meta, img, idx):
-        # draw incision
-        img_color = cv2.merge([img, img, img])
-        cv2.line(img_color, self.meta[idx]['inc_left'], self.meta[idx]['inc_right'], (255,0,0), 2)
-
-        # draw stitches
-        for i in range(len(self.meta[idx]['top'])):
-            cv2.line(img_color, self.meta[idx]['top'][i], self.meta[idx]['bottom'][i], (255,0,0), 2)
-        plt.imshow(img_color)
-        plt.show()
-        return
 
 
     # actually pretty good, outliers must be removed from skeletonized image though.
@@ -364,15 +353,29 @@ class Preprocessing:
                 crossing_angle = util.ang([top, bottom], [im_meta['inc_left'], im_meta['inc_right']])
                 output_json[idx]['crossing_angles'].append(crossing_angle)
 
-        with open(self.output_filename, 'w', encoding='utf-8') as f:
+        with open(os.path.join(self.dir_path, "out", self.output_filename), 'w', encoding='utf-8') as f:
             json.dump(output_json, f, ensure_ascii=False, indent=4)
         test = 0
 
 
-    def visualize(self, img):
+    def visualize(self, img, im_name, method_name):
         #x = [self.incision[0][0][0], self.incision[0][1][0]]
         #y = [self.incision[0][0][1], self.incision[0][1][1]]
         #plt.plot(x, y, 'r')
         plt.imshow(img)
+        plt.title(method_name + " " + im_name)
+        plt.savefig(os.path.join(self.dir_path, "out", (method_name + "_" + im_name)))
         plt.show()
 
+    def visualize_hit_miss(self, img, idx, im_name, method_name):
+        # draw incision
+        img_color = cv2.merge([img, img, img])
+        cv2.line(img_color, self.meta[idx]['inc_left'], self.meta[idx]['inc_right'], (255,0,0), 2)
+
+        # draw stitches
+        for i in range(len(self.meta[idx]['top'])):
+            cv2.line(img_color, self.meta[idx]['top'][i], self.meta[idx]['bottom'][i], (255,0,0), 2)
+        plt.imshow(img_color)
+        plt.title(method_name + " " + im_name)
+        plt.savefig(os.path.join(self.dir_path, "out", (method_name + "_" + im_name)))
+        plt.show()
