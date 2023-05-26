@@ -5,6 +5,23 @@ import numpy as np
 import math
 import itertools
 
+def add_border(im):
+    row, col = im.shape[:2]
+    bottom = im[row-2:row, 0:col]
+    mean = cv2.mean(bottom)[0]
+
+    border_size = 3
+    border = cv2.copyMakeBorder(
+        im,
+        top=border_size,
+        bottom=border_size,
+        left=border_size,
+        right=border_size,
+        borderType=cv2.BORDER_CONSTANT,
+        value=0
+    )
+    return border
+
 
 class Preprocessing:
     def __init__(self, im_paths, output_filename, enable_visualization):
@@ -13,42 +30,44 @@ class Preprocessing:
         self.filenames = [path.split("/")[-1] for path in im_paths]
         self.imgs = [cv2.imread(im_path) for im_path in im_paths]
 
-        self.incisions = []
-        self.stitches = []
         self.contours_list = []
-        self.meta = {
-            'top': [],
-            'bottom': [],
-            'inc_left': [],
-            'inc_right': []
-        }
+        self.meta = []
 
-        for img in self.imgs:
+        for idx, img in enumerate(self.imgs):
+            self.meta.append({
+                'filename': self.filenames[idx],
+                'top': [],
+                'bottom': [],
+                'inc_left': [],
+                'inc_right': []
+            })
+            self.contours_list.append([])
             img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            img = add_border(img)
+            
+            # get thresholded image
             thresh = self.thresholding_plus(img_gray)
-
 
             # run watershedding algorithm (mostly for visualization right now, markers can be used for further analysis though)
             watershed, markers = self.test_watershed(thresh, img)
 
             # run contour algorithm, creating a visualization and saving the contours in a list
-            #contours = self.test_contours(thresh)
+            contours = self.test_contours(thresh)
+            contours_markers = self.test_contours(markers)
             
             # the following can be used to transform image with unconnected stitches to connected stitches
-            # This allows us to use different kinds of analyses on the image
+            # This allows us to use different kinds of analyses on the image, like hough transform and hit or miss
             kernel = np.ones((5,5),np.uint8)
             dil = cv2.dilate(thresh, kernel, iterations=6)
-            erode = cv2.erode(dil, kernel, iterations=6)
+            erode = cv2.erode(dil, kernel, iterations=5)
 
-
-            # The hough transformation isnt that stable yet, hard to find out why (probably has to do with the combination of parameters)
-            # when stitches arent perpendicular, it struggles to find the correct hough lines.
+            # The hough transformation isnt that stable, finding usable parameters would be necessary to make this a viable option
+            # when stitches arent at 90 or zero degrees, it struggles to find the correct hough lines.
             skel_normal = self.test_skel_hough(thresh) # run hough transform with thresholded image
             hough_erode = self.test_skel_hough(erode) # run hough transform with dilated/eroded image
 
             # Basic hit or miss implementation, with a few more tweaks, this could be really useful
             self.hit_miss = self.test_hit_miss(erode)
-            contours_markers = self.test_contours(markers)
             
             if enable_visualization:
                 self.visualize(thresh)
@@ -75,8 +94,12 @@ class Preprocessing:
         # Reverse black/white values
         inverse = np.invert(thresholding)
 
+        # add border to rule out some errors in futher analysis
+        inverse_border = add_border(inverse)
 
-        return inverse
+
+
+        return inverse_border
 
 
     def draw_hit_miss(self, meta, img):
@@ -91,13 +114,6 @@ class Preprocessing:
         plt.show()
         return
 
-    def find_incisions_from_contour(self):
-        self.incisions = []
-        for contours in self.contours_list:
-            areas = [cv2.contourArea(contour) for contour in contours]
-            incision_idx = areas.index(max(areas))
-            self.incisions.append(contours[incision_idx])
-        return
 
     # actually pretty good, outliers must be removed from skeletonized image though.
     def test_hit_miss(self, img):
@@ -112,6 +128,10 @@ class Preprocessing:
         # closing to get rid of unnecessary gaps
         kernel = np.ones((3, 3), np.uint8)
         skel_close = cv2.morphologyEx(skel, cv2.MORPH_CLOSE, kernel)
+        skel_close = add_border(skel_close)
+        im_shape = skel_close.shape
+        height = im_shape[0]
+        width = im_shape[1]
 
         # create structuring elements for top/bottom stitches and incision
         # These may have to be adjusted, so it finds the stitches more reliably
@@ -141,6 +161,9 @@ class Preprocessing:
                     self.meta['inc_left'].append([x,y])
                 elif np.equal(current_square, incision_right_kernel).all():
                     self.meta['inc_right'].append([x,y])
+
+        plt.imshow(skel_close)
+        plt.show()
 
         self.sort_and_filter_meta()
 
@@ -178,6 +201,7 @@ class Preprocessing:
 
 
     def sort_stitches(self, top, bottom):
+        sorted_top = self.meta['top'].copy()
         sorted_bottom = []
         for i in range(len(top)):
             shortest_distance = float('inf')
@@ -188,14 +212,18 @@ class Preprocessing:
                     shortest_distance = dst
                     shortest_idx = j
             if bottom[shortest_idx] not in sorted_bottom:
+                #sorted_top.append(top[shortest_idx])
                 sorted_bottom.append(bottom[shortest_idx])
             else:
-
                 idx_to_replace = sorted_bottom.index(bottom[shortest_idx])
                 if self.calculate_distance(self.meta['top'][idx_to_replace], sorted_bottom[idx_to_replace]) < shortest_distance:
                     sorted_bottom[idx_to_replace] = bottom[shortest_idx]
+                    #sorted_top[idx_to_replace] = top[shortest_idx]
+                del sorted_top[idx_to_replace]
+
                     
         self.meta['bottom'] = sorted_bottom
+        self.meta['top'] = sorted_top
         return
 
 
