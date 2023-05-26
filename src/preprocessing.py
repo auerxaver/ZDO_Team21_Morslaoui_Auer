@@ -1,9 +1,12 @@
 import matplotlib.pyplot as plt
-import skimage
-import cv2
 import numpy as np
-import math
 import itertools
+import skimage
+import json
+import math
+import cv2
+
+import util
 
 def add_border(im):
     row, col = im.shape[:2]
@@ -77,7 +80,7 @@ class Preprocessing:
                 self.visualize(markers)
                 #self.visualize(contours)
                 self.visualize(contours_markers)
-                self.draw_hit_miss(self.hit_miss, thresh, idx)
+            self.draw_hit_miss(self.hit_miss, thresh, idx)
             test = 0
         
         self.write_to_json()
@@ -163,9 +166,6 @@ class Preprocessing:
                     self.meta[idx]['inc_left'].append([x,y])
                 elif np.equal(current_square, incision_right_kernel).all():
                     self.meta[idx]['inc_right'].append([x,y])
-
-        plt.imshow(skel_close)
-        plt.show()
 
         self.sort_and_filter_meta(idx)
 
@@ -262,7 +262,6 @@ class Preprocessing:
         # closing to get rid of unnecessary gaps
         kernel = np.ones((3, 3), np.uint8)
         skel_close = cv2.morphologyEx(skel, cv2.MORPH_CLOSE, kernel)
-        plt.imshow(skel_close)
 
         # use hough transform to get all lines
         minLineLength=20
@@ -347,9 +346,28 @@ class Preprocessing:
 
 
     def write_to_json(self):
-        output_json = {}
-        for filename in self.filenames:
-            return
+        output_json = []
+        for idx, im_meta in enumerate(self.meta):
+            #crossing_angles = calc_angles()
+            output_json.append({
+                "filename": im_meta['filename'],
+                "incision_polyline": [im_meta['inc_left'], im_meta['inc_right']],
+                "crossing_positions": [],
+                "crossing_angles": []
+            })
+            for top, bottom in zip(im_meta['top'], im_meta['bottom']):
+                # calculate crossing position as pixels from the start of the incision (lefthand side)
+                intersect = util.intersectLines(top, bottom, im_meta['inc_left'], im_meta['inc_right'])
+                crossing_position = intersect[0] - im_meta['inc_left'][0]
+                output_json[idx]['crossing_positions'].append(crossing_position)
+                # calculate angle between stitch and incision
+                crossing_angle = util.ang([top, bottom], [im_meta['inc_left'], im_meta['inc_right']])
+                output_json[idx]['crossing_angles'].append(crossing_angle)
+
+        with open(self.output_filename, 'w', encoding='utf-8') as f:
+            json.dump(output_json, f, ensure_ascii=False, indent=4)
+        test = 0
+
 
     def visualize(self, img):
         #x = [self.incision[0][0][0], self.incision[0][1][0]]

@@ -14,7 +14,10 @@ with open('annotations.xml') as fd:
 if __name__ == '__main__':
     output_filename = sys.argv[1]
     enable_visualization = sys.argv[2] == "-v"
-    incisions = sys.argv[3:-1]
+    if enable_visualization:
+        incisions = sys.argv[3:-1]
+    else:
+        incisions = sys.argv[2:-1]
     if sys.argv[-1] == "inc":
         inc = sys.argv[-1]
     print(sys.argv)
