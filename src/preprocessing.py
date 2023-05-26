@@ -52,8 +52,8 @@ class Preprocessing:
             watershed, markers = self.test_watershed(thresh, img)
 
             # run contour algorithm, creating a visualization and saving the contours in a list
-            contours = self.test_contours(thresh)
-            contours_markers = self.test_contours(markers)
+            contours = self.test_contours(thresh, idx)
+            contours_markers = self.test_contours(markers, idx)
             
             # the following can be used to transform image with unconnected stitches to connected stitches
             # This allows us to use different kinds of analyses on the image, like hough transform and hit or miss
@@ -67,7 +67,7 @@ class Preprocessing:
             hough_erode = self.test_skel_hough(erode) # run hough transform with dilated/eroded image
 
             # Basic hit or miss implementation, with a few more tweaks, this could be really useful
-            self.hit_miss = self.test_hit_miss(erode)
+            self.hit_miss = self.test_hit_miss(erode, idx)
             
             if enable_visualization:
                 self.visualize(thresh)
@@ -77,8 +77,10 @@ class Preprocessing:
                 self.visualize(markers)
                 #self.visualize(contours)
                 self.visualize(contours_markers)
-            
-            self.draw_hit_miss(self.hit_miss, thresh)
+                self.draw_hit_miss(self.hit_miss, thresh, idx)
+            test = 0
+        
+        self.write_to_json()
         
         #self.find_incisions()
 
@@ -102,21 +104,21 @@ class Preprocessing:
         return inverse_border
 
 
-    def draw_hit_miss(self, meta, img):
+    def draw_hit_miss(self, meta, img, idx):
         # draw incision
         img_color = cv2.merge([img, img, img])
-        cv2.line(img_color, self.meta['inc_left'], self.meta['inc_right'], (255,0,0), 2)
+        cv2.line(img_color, self.meta[idx]['inc_left'], self.meta[idx]['inc_right'], (255,0,0), 2)
 
         # draw stitches
-        for i in range(len(self.meta['top'])):
-            cv2.line(img_color, self.meta['top'][i], self.meta['bottom'][i], (255,0,0), 2)
+        for i in range(len(self.meta[idx]['top'])):
+            cv2.line(img_color, self.meta[idx]['top'][i], self.meta[idx]['bottom'][i], (255,0,0), 2)
         plt.imshow(img_color)
         plt.show()
         return
 
 
     # actually pretty good, outliers must be removed from skeletonized image though.
-    def test_hit_miss(self, img):
+    def test_hit_miss(self, img, idx):
         im_shape = img.shape
         height = im_shape[0]
         width = im_shape[1]
@@ -154,54 +156,54 @@ class Preprocessing:
             for x in range(1, width - 2):
                 current_square = skel_close[y-1:y+2, x-1:x+2]
                 if np.equal(current_square, top_kernel).all():
-                    self.meta['top'].append([x,y])
+                    self.meta[idx]['top'].append([x,y])
                 elif np.equal(current_square, bottom_kernel).all():
-                    self.meta['bottom'].append([x,y])
+                    self.meta[idx]['bottom'].append([x,y])
                 elif np.equal(current_square, incision_left_kernel).all():
-                    self.meta['inc_left'].append([x,y])
+                    self.meta[idx]['inc_left'].append([x,y])
                 elif np.equal(current_square, incision_right_kernel).all():
-                    self.meta['inc_right'].append([x,y])
+                    self.meta[idx]['inc_right'].append([x,y])
 
         plt.imshow(skel_close)
         plt.show()
 
-        self.sort_and_filter_meta()
+        self.sort_and_filter_meta(idx)
 
 
-    def sort_and_filter_meta(self):
+    def sort_and_filter_meta(self, idx):
         # filter out unrealistic incision parts 
-        self.meta['inc_left'].sort()
-        self.meta['inc_right'].sort()
+        self.meta[idx]['inc_left'].sort()
+        self.meta[idx]['inc_right'].sort()
 
-        self.meta['inc_left'] = self.meta['inc_left'][0]
-        self.meta['inc_right'] = self.meta['inc_right'][-1]
+        self.meta[idx]['inc_left'] = self.meta[idx]['inc_left'][0]
+        self.meta[idx]['inc_right'] = self.meta[idx]['inc_right'][-1]
 
         # sort stitches by x value
-        self.meta['top'].sort()
-        self.meta['bottom'].sort()
+        self.meta[idx]['top'].sort()
+        self.meta[idx]['bottom'].sort()
 
         # filter out top and bottom stitches that dont have a corresponding entry in each other's lists
         # some information gets lost by that, but necessary for further analysis
-        top = self.meta['top']
-        bottom = self.meta['bottom']
+        top = self.meta[idx]['top']
+        bottom = self.meta[idx]['bottom']
         if len(top) > len(bottom):
             idxs_to_remove = self.filter_stitches_old(bottom, top, np.abs(len(top) - len(bottom)))
             #for idx in idxs_to_remove:
             top = [v for i, v in enumerate(top) if i not in idxs_to_remove]
-            self.meta['top'] = top
+            self.meta[idx]['top'] = top
         elif len(top) < len(bottom):
             idxs_to_remove = self.filter_stitches_old(top, bottom, np.abs(len(top) - len(bottom)))
             #for idx in idxs_to_remove:
                 #del bottom[idx]
             bottom = [v for i, v in enumerate(bottom) if i not in idxs_to_remove]
-            self.meta['bottom'] = bottom
+            self.meta[idx]['bottom'] = bottom
 
-        self.sort_stitches(top, bottom)
+        self.sort_stitches(top, bottom, idx)
         test = 0
 
 
-    def sort_stitches(self, top, bottom):
-        sorted_top = self.meta['top'].copy()
+    def sort_stitches(self, top, bottom, idx):
+        sorted_top = self.meta[idx]['top'].copy()
         sorted_bottom = []
         for i in range(len(top)):
             shortest_distance = float('inf')
@@ -216,14 +218,14 @@ class Preprocessing:
                 sorted_bottom.append(bottom[shortest_idx])
             else:
                 idx_to_replace = sorted_bottom.index(bottom[shortest_idx])
-                if self.calculate_distance(self.meta['top'][idx_to_replace], sorted_bottom[idx_to_replace]) < shortest_distance:
+                if self.calculate_distance(self.meta[idx]['top'][idx_to_replace], sorted_bottom[idx_to_replace]) < shortest_distance:
                     sorted_bottom[idx_to_replace] = bottom[shortest_idx]
                     #sorted_top[idx_to_replace] = top[shortest_idx]
                 del sorted_top[idx_to_replace]
 
                     
-        self.meta['bottom'] = sorted_bottom
-        self.meta['top'] = sorted_top
+        self.meta[idx]['bottom'] = sorted_bottom
+        self.meta[idx]['top'] = sorted_top
         return
 
 
@@ -324,7 +326,7 @@ class Preprocessing:
     # Maybe combine with watershedding?
     # e.g watershedding to create markers, and use those as reference for the contours, would get rid of unnecessary noise
     # Maybe there's an easier way to 
-    def test_contours(self, inverse):
+    def test_contours(self, inverse, idx):
         contours, _ = cv2.findContours(inverse, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         filtered_contours = []
         for contour in contours:
@@ -332,7 +334,7 @@ class Preprocessing:
             if area > 0 and area > 10:
                 filtered_contours.append(contour)
 
-        self.contours_list.append(filtered_contours)
+        self.contours_list[idx].append(filtered_contours)
         inverse_new = cv2.merge([inverse,inverse, inverse])
         for contour in filtered_contours:
             x, y, w, h = cv2.boundingRect(contour)
