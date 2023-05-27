@@ -73,7 +73,7 @@ class Preprocessing:
             hough_erode = self.test_skel_hough(erode) # run hough transform with dilated/eroded image
 
             # Basic hit or miss implementation, with a few more tweaks, this could be really useful
-            self.hit_miss = self.test_hit_miss(erode, idx)
+            self.test_hit_miss(erode, idx)
             
             if enable_visualization:
                 self.visualize(thresh, self.filenames[idx], "thresholded")
@@ -123,6 +123,8 @@ class Preprocessing:
         kernel = np.ones((3, 3), np.uint8)
         skel_close = cv2.morphologyEx(skel, cv2.MORPH_CLOSE, kernel)
         skel_close = add_border(skel_close)
+        plt.imshow(skel_close)
+        plt.show()
         im_shape = skel_close.shape
         height = im_shape[0]
         width = im_shape[1]
@@ -188,7 +190,6 @@ class Preprocessing:
             self.meta[idx]['bottom'] = bottom
 
         self.sort_stitches(top, bottom, idx)
-        test = 0
 
 
     def sort_stitches(self, top, bottom, idx):
@@ -212,10 +213,9 @@ class Preprocessing:
                     #sorted_top[idx_to_replace] = top[shortest_idx]
                 del sorted_top[idx_to_replace]
 
-                    
+
         self.meta[idx]['bottom'] = sorted_bottom
         self.meta[idx]['top'] = sorted_top
-        return
 
 
     def calculate_distance(self, x1, x2):

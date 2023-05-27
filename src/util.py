@@ -32,23 +32,6 @@ def ang(lineA, lineB):
         
         return ang_deg
 
-def calculate_slope(point1, point2):
-    x1, y1 = point1
-    x2, y2 = point2
-    if x2 - x1 == 0:
-        return float('inf')
-    else:
-        return (y2 - y1) / (x2 - x1)
-
-def calculate_angle(point1, point2, point3, point4):
-    slope1 = calculate_slope(point1, point2)
-    slope2 = calculate_slope(point3, point4)
-    
-    angle_rad = math.atan2(slope2 - slope1, 1 + slope1 * slope2)
-    angle_deg = math.degrees(angle_rad)
-    return angle_deg
-
-
 def intersectLines( pt1, pt2, ptA, ptB ):
     """ this returns the intersection of Line(pt1,pt2) and Line(ptA,ptB)
 
