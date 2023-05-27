@@ -13,6 +13,7 @@ with open('annotations.xml') as fd:
 
 
 if __name__ == '__main__':
+    debug_show_plots = False
     output_filename = sys.argv[1]
     enable_visualization = sys.argv[2] == "-v"
     if enable_visualization:
@@ -23,7 +24,7 @@ if __name__ == '__main__':
         inc = sys.argv[-1]
     print(sys.argv)
 
-    pp = preprocessing.Preprocessing(incisions, output_filename, enable_visualization) # Generate output.json in preprocessing script
+    pp = preprocessing.Preprocessing(incisions, output_filename, enable_visualization, debug_show_plots) # Generate output.json in preprocessing script
     an = analysis.Analysis(output_filename)
 
     x = 0

@@ -29,7 +29,8 @@ def add_border(im):
 
 
 class Preprocessing:
-    def __init__(self, im_paths, output_filename, enable_visualization):
+    def __init__(self, im_paths, output_filename, enable_visualization, debug_show_plots):
+        self.debug_show_plots = debug_show_plots
         self.dir_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.im_paths = im_paths
         self.output_filename = output_filename
@@ -123,8 +124,6 @@ class Preprocessing:
         kernel = np.ones((3, 3), np.uint8)
         skel_close = cv2.morphologyEx(skel, cv2.MORPH_CLOSE, kernel)
         skel_close = add_border(skel_close)
-        plt.imshow(skel_close)
-        plt.show()
         im_shape = skel_close.shape
         height = im_shape[0]
         width = im_shape[1]
@@ -365,7 +364,10 @@ class Preprocessing:
         plt.imshow(img)
         plt.title(method_name + " " + im_name)
         plt.savefig(os.path.join(self.dir_path, "out", (method_name + "_" + im_name)))
-        plt.show()
+        if self.debug_show_plots:
+            plt.show()
+        plt.close()
+
 
     def visualize_hit_miss(self, img, idx, im_name, method_name):
         # draw incision
@@ -378,4 +380,6 @@ class Preprocessing:
         plt.imshow(img_color)
         plt.title(method_name + " " + im_name)
         plt.savefig(os.path.join(self.dir_path, "out", (method_name + "_" + im_name)))
-        plt.show()
+        if self.debug_show_plots:
+            plt.show()
+        plt.close()
