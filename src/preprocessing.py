@@ -64,9 +64,10 @@ class Preprocessing:
             
             # the following can be used to transform image with unconnected stitches to connected stitches
             # This allows us to use different kinds of analyses on the image, like hough transform and hit or miss
+            iter_n = int(img.shape[0] / 17)
             kernel = np.ones((5,5),np.uint8)
-            dil = cv2.dilate(thresh, kernel, iterations=6)
-            erode = cv2.erode(dil, kernel, iterations=5)
+            dil = cv2.dilate(thresh, kernel, iterations=iter_n)
+            erode = cv2.erode(dil, kernel, iterations=iter_n - 1)
 
             # The hough transformation isnt that stable, finding usable parameters would be necessary to make this a viable option
             # when stitches arent at 90 or zero degrees, it struggles to find the correct hough lines.
