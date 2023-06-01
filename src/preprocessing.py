@@ -105,8 +105,6 @@ class Preprocessing:
         # add border to rule out some errors in futher analysis
         inverse_border = add_border(inverse)
 
-
-
         return inverse_border
 
 
@@ -176,19 +174,23 @@ class Preprocessing:
         # some information gets lost by that, but necessary for further analysis
         top = self.meta[idx]['top']
         bottom = self.meta[idx]['bottom']
-        if len(top) > len(bottom):
-            idxs_to_remove = self.filter_stitches_old(bottom, top, np.abs(len(top) - len(bottom)))
-            #for idx in idxs_to_remove:
-            top = [v for i, v in enumerate(top) if i not in idxs_to_remove]
-            self.meta[idx]['top'] = top
-        elif len(top) < len(bottom):
-            idxs_to_remove = self.filter_stitches_old(top, bottom, np.abs(len(top) - len(bottom)))
-            #for idx in idxs_to_remove:
-                #del bottom[idx]
-            bottom = [v for i, v in enumerate(bottom) if i not in idxs_to_remove]
-            self.meta[idx]['bottom'] = bottom
+        if len(top) == 0 or len(bottom) == 0:
+            self.meta[idx]['top'] = []
+            self.meta[idx]['bottom'] = []
+        else:
+            if len(top) > len(bottom):
+                idxs_to_remove = self.filter_stitches_old(bottom, top, np.abs(len(top) - len(bottom)))
+                #for idx in idxs_to_remove:
+                top = [v for i, v in enumerate(top) if i not in idxs_to_remove]
+                self.meta[idx]['top'] = top
+            elif len(top) < len(bottom):
+                idxs_to_remove = self.filter_stitches_old(top, bottom, np.abs(len(top) - len(bottom)))
+                #for idx in idxs_to_remove:
+                    #del bottom[idx]
+                bottom = [v for i, v in enumerate(bottom) if i not in idxs_to_remove]
+                self.meta[idx]['bottom'] = bottom
 
-        self.sort_stitches(top, bottom, idx)
+            self.sort_stitches(top, bottom, idx)
 
 
     def sort_stitches(self, top, bottom, idx):
@@ -224,6 +226,7 @@ class Preprocessing:
     def filter_stitches_old(self, shorter_list, longer_list, size_difference):
         distances = []
         shorter_list = np.asarray(shorter_list)
+        #if len(shorter_list > 0):
         for stitch in longer_list:
             distances.append(min(np.abs(shorter_list[:,0] - stitch[0])))
 
