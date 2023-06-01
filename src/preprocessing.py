@@ -15,7 +15,7 @@ def add_border(im):
     bottom = im[row-2:row, 0:col]
     mean = cv2.mean(bottom)[0]
 
-    border_size = 3
+    border_size = 10
     border = cv2.copyMakeBorder(
         im,
         top=border_size,
@@ -75,6 +75,7 @@ class Preprocessing:
 
             # Basic hit or miss implementation, with a few more tweaks, this could be really useful
             self.test_hit_miss(erode, idx)
+            thresh = add_border(thresh)
             
             if enable_visualization:
                 self.visualize(thresh, self.filenames[idx], "thresholded")
