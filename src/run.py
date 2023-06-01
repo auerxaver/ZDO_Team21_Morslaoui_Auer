@@ -13,7 +13,7 @@ with open('annotations.xml') as fd:
 
 
 if __name__ == '__main__':
-    debug_show_plots = False
+    debug_show_plots = True
     output_filename = sys.argv[1]
     enable_visualization = sys.argv[2] == "-v"
     if enable_visualization:
